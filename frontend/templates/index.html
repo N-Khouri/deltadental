@@ -6,16 +6,20 @@
     <title>Data Quality Dashboard – Upload</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
-      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; max-width: 560px; }
+      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; max-width: 720px; }
       .row { display: flex; gap: .75rem; align-items: center; }
       button { padding: .6rem 1rem; border-radius: 10px; border: 1px solid #e5e7eb; cursor: pointer; }
+      .ok { color: #065f46; }
+      .err { color: #7f1d1d; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #e5e7eb; padding: .5rem; text-align: left; }
       pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: 10px; overflow-x: auto; }
       small { color: #6b7280; }
     </style>
   </head>
   <body>
     <h1>Data Quality Dashboard</h1>
-    <p><small>Step 1: Minimal upload from a simple HTML page to a Flask API.</small></p>
+    <p><small>Step 2: After upload, show friendly metadata (row/column counts + headers).</small></p>
 
     <div class="card">
       <form id="upload-form">
@@ -26,24 +30,73 @@
         <p><small>Max size: 10 MB. Only .csv files are accepted.</small></p>
       </form>
 
-      <h3>Response</h3>
+      <div id="success" class="ok" style="display:none"></div>
+      <div id="error" class="err" style="display:none"></div>
+
+      <div id="meta" style="display:none">
+        <h3>File Summary</h3>
+        <table>
+          <tbody>
+            <tr><th>Filename</th><td id="m-filename"></td></tr>
+            <tr><th>Saved To</th><td id="m-saved"></td></tr>
+            <tr><th>Rows</th><td id="m-rows"></td></tr>
+            <tr><th>Columns</th><td id="m-cols"></td></tr>
+          </tbody>
+        </table>
+        <h4>Headers (first 50)</h4>
+        <pre id="m-columns"></pre>
+      </div>
+
+      <h3>Raw Response</h3>
       <pre id="result">(no upload yet)</pre>
     </div>
 
     <script>
       const form = document.getElementById("upload-form");
       const result = document.getElementById("result");
+      const ok = document.getElementById("success");
+      const err = document.getElementById("error");
+      const meta = document.getElementById("meta");
+      const mFile = document.getElementById("m-filename");
+      const mPath = document.getElementById("m-saved");
+      const mRows = document.getElementById("m-rows");
+      const mCols = document.getElementById("m-cols");
+      const mColsList = document.getElementById("m-columns");
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const data = new FormData(form);
+        ok.style.display = "none";
+        err.style.display = "none";
+        meta.style.display = "none";
         result.textContent = "Uploading...";
         try {
           const res = await fetch("/upload", { method: "POST", body: data });
           const text = await res.text();
           result.textContent = text;
-        } catch (err) {
-          result.textContent = `Error: ${err}`;
+
+          let json;
+          try { json = JSON.parse(text); } catch (_) {}
+
+          if (res.ok && json) {
+            ok.textContent = json.message || "Upload ok";
+            ok.style.display = "block";
+
+            if (json.filename) mFile.textContent = json.filename;
+            if (json.saved_to) mPath.textContent = json.saved_to;
+            if (typeof json.row_count === 'number') mRows.textContent = json.row_count.toLocaleString();
+            if (typeof json.column_count === 'number') mCols.textContent = json.column_count.toLocaleString();
+            if (Array.isArray(json.columns)) mColsList.textContent = JSON.stringify(json.columns, null, 2);
+
+            meta.style.display = "block";
+          } else {
+            err.textContent = (json && (json.error || json.message)) || `HTTP ${res.status}`;
+            err.style.display = "block";
+          }
+        } catch (e) {
+          result.textContent = `Error: ${e}`;
+          err.textContent = String(e);
+          err.style.display = "block";
         }
       });
     </script>

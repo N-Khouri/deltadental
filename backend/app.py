@@ -1,6 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 from werkzeug.utils import secure_filename
 import os
+import pandas as pd
 
 ALLOWED_EXTENSIONS = {"csv"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
@@ -38,10 +39,26 @@ def upload():
     dest_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(dest_path)
 
+    try:
+        # Let pandas auto-detect dialect; low_memory=False helps wide CSVs
+        df = pd.read_csv(dest_path, low_memory=False)
+        rows, cols = df.shape
+        columns = df.columns.tolist()
+    except Exception as e:
+        return jsonify({
+            "message": "Upload successful, but failed to read CSV for metadata.",
+            "filename": filename,
+            "saved_to": dest_path,
+            "read_error": str(e)
+        }), 200
+
     return jsonify({
         "message": "Upload successful",
         "filename": filename,
-        "saved_to": dest_path
+        "saved_to": dest_path,
+        "row_count": rows,
+        "column_count": cols,
+        "columns": columns[:50]
     }), 200
 
 
