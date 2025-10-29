@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data Quality Dashboard – Upload</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
+      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; max-width: 560px; }
+      .row { display: flex; gap: .75rem; align-items: center; }
+      button { padding: .6rem 1rem; border-radius: 10px; border: 1px solid #e5e7eb; cursor: pointer; }
+      pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: 10px; overflow-x: auto; }
+      small { color: #6b7280; }
+    </style>
+  </head>
+  <body>
+    <h1>Data Quality Dashboard</h1>
+    <p><small>Step 1: Minimal upload from a simple HTML page to a Flask API.</small></p>
+
+    <div class="card">
+      <form id="upload-form">
+        <div class="row">
+          <input type="file" name="file" id="file" accept=".csv" required />
+          <button type="submit">Upload CSV</button>
+        </div>
+        <p><small>Max size: 10 MB. Only .csv files are accepted.</small></p>
+      </form>
+
+      <h3>Response</h3>
+      <pre id="result">(no upload yet)</pre>
+    </div>
+
+    <script>
+      const form = document.getElementById("upload-form");
+      const result = document.getElementById("result");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const data = new FormData(form);
+        result.textContent = "Uploading...";
+        try {
+          const res = await fetch("/upload", { method: "POST", body: data });
+          const text = await res.text();
+          result.textContent = text;
+        } catch (err) {
+          result.textContent = `Error: ${err}`;
+        }
+      });
+    </script>
+  </body>
+</html>
