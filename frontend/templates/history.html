@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data Quality Dashboard – History</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
+      nav { margin-bottom: 1rem; }
+      nav a { margin-right: 1rem; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #e5e7eb; padding: .5rem; text-align: left; }
+      th { background: #f9fafb; }
+      small { color: #6b7280; }
+      .muted { color: #6b7280; font-size: .9em; }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="/">Upload</a>
+      <a href="/history">History</a>
+    </nav>
+
+    <h1>History</h1>
+    <p class="muted">Showing most recent 100 uploads.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Uploaded At (UTC)</th>
+          <th>Filename</th>
+          <th>Rows</th>
+          <th>Cols</th>
+          <th>Top Null Columns</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.id }}</td>
+          <td><code>{{ r.uploaded_at }}</code></td>
+          <td>{{ r.filename }}</td>
+          <td>{{ r.row_count if r.row_count is not none else '-' }}</td>
+          <td>{{ r.column_count if r.column_count is not none else '-' }}</td>
+          <td>
+            {% if r.top3 and r.top3|length > 0 %}
+              {{ r.top3 | join(', ') }}
+            {% else %}
+              <span class="muted">(no parse)</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+</html>

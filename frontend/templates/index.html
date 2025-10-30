@@ -6,6 +6,8 @@
     <title>Data Quality Dashboard – Upload</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
+      nav { margin-bottom: 1rem; }
+      nav a { margin-right: 1rem; }
       .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; max-width: 880px; }
       .row { display: flex; gap: .75rem; align-items: center; }
       button { padding: .6rem 1rem; border-radius: 10px; border: 1px solid #e5e7eb; cursor: pointer; }
@@ -19,8 +21,13 @@
     </style>
   </head>
   <body>
+    <nav>
+      <a href="/">Upload</a>
+      <a href="/history">History</a>
+    </nav>
+
     <h1>Data Quality Dashboard</h1>
-    <p><small>Step 3: After upload, compute and show <em>Missing values by column</em>.</small></p>
+    <p><small>Step 4: Persist uploads to SQLite and show a History page.</small></p>
 
     <div class="card">
       <form id="upload-form">
@@ -50,7 +57,7 @@
 
       <div id="dq" style="display:none">
         <h3>Data Quality – Missing Values by Column</h3>
-        <p><small>Sorted by missing count (desc). Showing all columns.</small></p>
+        <p><small>Sorted by missing count (desc). Showing up to 500 columns.</small></p>
         <table id="dq-null-table">
           <thead>
             <tr>
