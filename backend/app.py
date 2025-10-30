@@ -44,6 +44,16 @@ def upload():
         df = pd.read_csv(dest_path, low_memory=False)
         rows, cols = df.shape
         columns = df.columns.tolist()
+
+        null_counts = df.isna().sum()
+        null_pct = (df.isna().mean() * 100).round(2)
+        # Build a list of {column, missing, missing_pct} sorted by missing desc
+        nulls = (
+            pd.DataFrame({"column": df.columns, "missing": null_counts.values, "missing_pct": null_pct.values})
+            .sort_values(["missing", "column"], ascending=[False, True])
+            .to_dict(orient="records")
+        )
+
     except Exception as e:
         return jsonify({
             "message": "Upload successful, but failed to read CSV for metadata.",
@@ -58,7 +68,8 @@ def upload():
         "saved_to": dest_path,
         "row_count": rows,
         "column_count": cols,
-        "columns": columns[:50]
+        "columns": columns[:50],
+        "nulls": nulls
     }), 200
 
 

@@ -6,20 +6,21 @@
     <title>Data Quality Dashboard – Upload</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
-      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; max-width: 720px; }
+      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; max-width: 880px; }
       .row { display: flex; gap: .75rem; align-items: center; }
       button { padding: .6rem 1rem; border-radius: 10px; border: 1px solid #e5e7eb; cursor: pointer; }
       .ok { color: #065f46; }
       .err { color: #7f1d1d; }
       table { border-collapse: collapse; width: 100%; }
       th, td { border: 1px solid #e5e7eb; padding: .5rem; text-align: left; }
+      th { background: #f9fafb; }
       pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: 10px; overflow-x: auto; }
       small { color: #6b7280; }
     </style>
   </head>
   <body>
     <h1>Data Quality Dashboard</h1>
-    <p><small>Step 2: After upload, show friendly metadata (row/column counts + headers).</small></p>
+    <p><small>Step 3: After upload, compute and show <em>Missing values by column</em>.</small></p>
 
     <div class="card">
       <form id="upload-form">
@@ -47,6 +48,22 @@
         <pre id="m-columns"></pre>
       </div>
 
+      <div id="dq" style="display:none">
+        <h3>Data Quality – Missing Values by Column</h3>
+        <p><small>Sorted by missing count (desc). Showing all columns.</small></p>
+        <table id="dq-null-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Column</th>
+              <th>Missing</th>
+              <th>Missing %</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <h3>Raw Response</h3>
       <pre id="result">(no upload yet)</pre>
     </div>
@@ -57,11 +74,18 @@
       const ok = document.getElementById("success");
       const err = document.getElementById("error");
       const meta = document.getElementById("meta");
+      const dq = document.getElementById("dq");
+      const dqBody = document.querySelector('#dq-null-table tbody');
       const mFile = document.getElementById("m-filename");
       const mPath = document.getElementById("m-saved");
       const mRows = document.getElementById("m-rows");
       const mCols = document.getElementById("m-cols");
       const mColsList = document.getElementById("m-columns");
+
+      function numberFmt(x){
+        if (typeof x === 'number') return x.toLocaleString();
+        return x;
+      }
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -69,6 +93,8 @@
         ok.style.display = "none";
         err.style.display = "none";
         meta.style.display = "none";
+        dq.style.display = "none";
+        dqBody.innerHTML = '';
         result.textContent = "Uploading...";
         try {
           const res = await fetch("/upload", { method: "POST", body: data });
@@ -84,11 +110,25 @@
 
             if (json.filename) mFile.textContent = json.filename;
             if (json.saved_to) mPath.textContent = json.saved_to;
-            if (typeof json.row_count === 'number') mRows.textContent = json.row_count.toLocaleString();
-            if (typeof json.column_count === 'number') mCols.textContent = json.column_count.toLocaleString();
+            if (typeof json.row_count === 'number') mRows.textContent = numberFmt(json.row_count);
+            if (typeof json.column_count === 'number') mCols.textContent = numberFmt(json.column_count);
             if (Array.isArray(json.columns)) mColsList.textContent = JSON.stringify(json.columns, null, 2);
-
             meta.style.display = "block";
+
+            if (Array.isArray(json.nulls)) {
+              json.nulls.forEach((r, i) => {
+                const tr = document.createElement('tr');
+                const pct = (typeof r.missing_pct === 'number') ? r.missing_pct.toFixed(2) + '%' : r.missing_pct;
+                tr.innerHTML = `
+                  <td>${i+1}</td>
+                  <td>${r.column ?? ''}</td>
+                  <td>${numberFmt(r.missing)}</td>
+                  <td>${pct}</td>
+                `;
+                dqBody.appendChild(tr);
+              });
+              dq.style.display = 'block';
+            }
           } else {
             err.textContent = (json && (json.error || json.message)) || `HTTP ${res.status}`;
             err.style.display = "block";
