@@ -13,6 +13,7 @@
       th { background: #f9fafb; }
       small { color: #6b7280; }
       .muted { color: #6b7280; font-size: .9em; }
+      code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
     </style>
   </head>
   <body>
@@ -33,6 +34,7 @@
           <th>Rows</th>
           <th>Cols</th>
           <th>Top Null Columns</th>
+          <th>Counts (formats, dups, outliers, rules)</th>
         </tr>
       </thead>
       <tbody>
@@ -44,11 +46,19 @@
           <td>{{ r.row_count if r.row_count is not none else '-' }}</td>
           <td>{{ r.column_count if r.column_count is not none else '-' }}</td>
           <td>
-            {% if r.top3 and r.top3|length > 0 %}
-              {{ r.top3 | join(', ') }}
+            {% if r.top3_null and r.top3_null|length > 0 %}
+              {{ r.top3_null | join(', ') }}
             {% else %}
-              <span class="muted">(no parse)</span>
+              <span class="muted">(none)</span>
             {% endif %}
+          </td>
+          <td>
+            <code>
+              formats={{ r.counts.formats or 0 }},
+              dups={{ r.counts.duplicates or 0 }},
+              outliers={{ r.counts.outliers or 0 }},
+              rules={{ r.counts.rules or 0 }}
+            </code>
           </td>
         </tr>
         {% endfor %}

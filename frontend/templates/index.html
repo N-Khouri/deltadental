@@ -1,151 +1,307 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>Data Quality Dashboard – Upload</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
-      nav { margin-bottom: 1rem; }
-      nav a { margin-right: 1rem; }
-      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; max-width: 880px; }
-      .row { display: flex; gap: .75rem; align-items: center; }
-      button { padding: .6rem 1rem; border-radius: 10px; border: 1px solid #e5e7eb; cursor: pointer; }
-      .ok { color: #065f46; }
-      .err { color: #7f1d1d; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #e5e7eb; padding: .5rem; text-align: left; }
-      th { background: #f9fafb; }
-      pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: 10px; overflow-x: auto; }
-      small { color: #6b7280; }
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            margin: 2rem;
+        }
+
+        nav {
+            margin-bottom: 1rem;
+        }
+
+        nav a {
+            margin-right: 1rem;
+        }
+
+        .card {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 1.5rem;
+            max-width: 980px;
+        }
+
+        .row {
+            display: flex;
+            gap: .75rem;
+            align-items: center;
+        }
+
+        button {
+            padding: .6rem 1rem;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            cursor: pointer;
+        }
+
+        .ok {
+            color: #065f46;
+        }
+
+        .err {
+            color: #7f1d1d;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            border: 1px solid #e5e7eb;
+            padding: .5rem;
+            text-align: left;
+        }
+
+        th {
+            background: #f9fafb;
+        }
+
+        pre {
+            background: #0b1020;
+            color: #e5e7eb;
+            padding: 1rem;
+            border-radius: 10px;
+            overflow-x: auto;
+        }
+
+        small {
+            color: #6b7280;
+        }
     </style>
-  </head>
-  <body>
-    <nav>
-      <a href="/">Upload</a>
-      <a href="/history">History</a>
-    </nav>
+</head>
+<body>
+<nav>
+    <a href="/">Upload</a>
+    <a href="/history">History</a>
+</nav>
 
-    <h1>Data Quality Dashboard</h1>
-    <p><small>Step 4: Persist uploads to SQLite and show a History page.</small></p>
+<h1>Data Quality Dashboard</h1>
+<p><small>All core categories implemented: missing, types, invalid formats, duplicates, outliers, business
+    rules.</small></p>
 
-    <div class="card">
-      <form id="upload-form">
+<div class="card">
+    <form id="upload-form">
         <div class="row">
-          <input type="file" name="file" id="file" accept=".csv" required />
-          <button type="submit">Upload CSV</button>
+            <input type="file" name="file" id="file" accept=".csv" required/>
+            <button type="submit">Upload CSV</button>
         </div>
         <p><small>Max size: 10 MB. Only .csv files are accepted.</small></p>
-      </form>
+    </form>
 
-      <div id="success" class="ok" style="display:none"></div>
-      <div id="error" class="err" style="display:none"></div>
+    <div id="success" class="ok" style="display:none"></div>
+    <div id="error" class="err" style="display:none"></div>
 
-      <div id="meta" style="display:none">
+    <div id="meta" style="display:none">
         <h3>File Summary</h3>
         <table>
-          <tbody>
-            <tr><th>Filename</th><td id="m-filename"></td></tr>
-            <tr><th>Saved To</th><td id="m-saved"></td></tr>
-            <tr><th>Rows</th><td id="m-rows"></td></tr>
-            <tr><th>Columns</th><td id="m-cols"></td></tr>
-          </tbody>
+            <tbody>
+            <tr>
+                <th>Filename</th>
+                <td id="m-filename"></td>
+            </tr>
+            <tr>
+                <th>Saved To</th>
+                <td id="m-saved"></td>
+            </tr>
+            <tr>
+                <th>Rows</th>
+                <td id="m-rows"></td>
+            </tr>
+            <tr>
+                <th>Columns</th>
+                <td id="m-cols"></td>
+            </tr>
+            </tbody>
         </table>
         <h4>Headers (first 50)</h4>
         <pre id="m-columns"></pre>
-      </div>
-
-      <div id="dq" style="display:none">
-        <h3>Data Quality – Missing Values by Column</h3>
-        <p><small>Sorted by missing count (desc). Showing up to 500 columns.</small></p>
-        <table id="dq-null-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Column</th>
-              <th>Missing</th>
-              <th>Missing %</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <h3>Raw Response</h3>
-      <pre id="result">(no upload yet)</pre>
     </div>
 
-    <script>
-      const form = document.getElementById("upload-form");
-      const result = document.getElementById("result");
-      const ok = document.getElementById("success");
-      const err = document.getElementById("error");
-      const meta = document.getElementById("meta");
-      const dq = document.getElementById("dq");
-      const dqBody = document.querySelector('#dq-null-table tbody');
-      const mFile = document.getElementById("m-filename");
-      const mPath = document.getElementById("m-saved");
-      const mRows = document.getElementById("m-rows");
-      const mCols = document.getElementById("m-cols");
-      const mColsList = document.getElementById("m-columns");
+    <div id="dq" style="display:none">
+        <h3>Missing Values by Column</h3>
+        <p><small>Sorted by missing count (desc). Showing up to 500 columns.</small></p>
+        <table id="dq-null-table">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Column</th>
+                <th>Missing</th>
+                <th>Missing %</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
 
-      function numberFmt(x){
+    <div id="formats" style="display:none">
+        <h3>Formats</h3>
+        <table id="formats-table">
+            <thead>
+            <tr><th>#</th><th>Metric</th><th>Count</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div id="dups" style="display:none">
+        <h3>Duplicates</h3>
+        <pre id="dups-pre"></pre>
+    </div>
+
+    <div id="outliers" style="display:none">
+        <h3>Outliers (IQR)</h3>
+        <pre id="outliers-pre"></pre>
+    </div>
+
+    <div id="rules" style="display:none">
+        <h3>Business-Rule Violations</h3>
+        <pre id="rules-pre"></pre>
+    </div>
+
+    <h3>Raw Response</h3>
+    <pre id="result">(no upload yet)</pre>
+</div>
+
+<script>
+    const form = document.getElementById("upload-form");
+    const result = document.getElementById("result");
+    const ok = document.getElementById("success");
+    const err = document.getElementById("error");
+    const meta = document.getElementById("meta");
+
+    const dq = document.getElementById("dq");
+    const dqBody = document.querySelector('#dq-null-table tbody');
+
+    const formatsSection = document.getElementById('formats');
+    const formatsBody = document.querySelector('#formats-table tbody');
+
+    const dSection = document.getElementById('dups');
+    const dPre = document.getElementById('dups-pre');
+
+    const oSection = document.getElementById('outliers');
+    const oPre = document.getElementById('outliers-pre');
+
+    const rSection = document.getElementById('rules');
+    const rPre = document.getElementById('rules-pre');
+
+    const mFile = document.getElementById("m-filename");
+    const mPath = document.getElementById("m-saved");
+    const mRows = document.getElementById("m-rows");
+    const mCols = document.getElementById("m-cols");
+    const mColsList = document.getElementById("m-columns");
+
+    function numberFmt(x) {
         if (typeof x === 'number') return x.toLocaleString();
         return x;
-      }
+    }
 
-      form.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const data = new FormData(form);
+
         ok.style.display = "none";
         err.style.display = "none";
         meta.style.display = "none";
+
         dq.style.display = "none";
         dqBody.innerHTML = '';
+        formatsSection.style.display = "none";
+        formatsBody.innerHTML = '';
+        dSection.style.display = "none";
+        dPre.textContent = '';
+        oSection.style.display = "none";
+        oPre.textContent = '';
+        rSection.style.display = "none";
+        rPre.textContent = '';
+
         result.textContent = "Uploading...";
+
         try {
-          const res = await fetch("/upload", { method: "POST", body: data });
-          const text = await res.text();
-          result.textContent = text;
+            const res = await fetch("/upload", {method: "POST", body: data});
+            const text = await res.text();
+            result.textContent = text;
 
-          let json;
-          try { json = JSON.parse(text); } catch (_) {}
+            let json;
+            try {
+                json = JSON.parse(text);
+            } catch (_) {
+            }
 
-          if (res.ok && json) {
-            ok.textContent = json.message || "Upload ok";
-            ok.style.display = "block";
+            if (res.ok && json) {
+                ok.textContent = json.message || "Upload ok";
+                ok.style.display = "block";
 
-            if (json.filename) mFile.textContent = json.filename;
-            if (json.saved_to) mPath.textContent = json.saved_to;
-            if (typeof json.row_count === 'number') mRows.textContent = numberFmt(json.row_count);
-            if (typeof json.column_count === 'number') mCols.textContent = numberFmt(json.column_count);
-            if (Array.isArray(json.columns)) mColsList.textContent = JSON.stringify(json.columns, null, 2);
-            meta.style.display = "block";
+                if (json.filename) mFile.textContent = json.filename;
+                if (json.saved_to) mPath.textContent = json.saved_to;
+                if (typeof json.row_count === 'number') mRows.textContent = numberFmt(json.row_count);
+                if (typeof json.column_count === 'number') mCols.textContent = numberFmt(json.column_count);
+                if (Array.isArray(json.columns)) mColsList.textContent = JSON.stringify(json.columns, null, 2);
+                meta.style.display = "block";
 
-            if (Array.isArray(json.nulls)) {
-              json.nulls.forEach((r, i) => {
-                const tr = document.createElement('tr');
-                const pct = (typeof r.missing_pct === 'number') ? r.missing_pct.toFixed(2) + '%' : r.missing_pct;
-                tr.innerHTML = `
-                  <td>${i+1}</td>
+                if (Array.isArray(json.nulls)) {
+                    json.nulls.forEach((r, i) => {
+                        const tr = document.createElement('tr');
+                        const pct = (typeof r.missing_pct === 'number') ? r.missing_pct.toFixed(2) + '%' : r.missing_pct;
+                        tr.innerHTML = `
+                  <td>${i + 1}</td>
                   <td>${r.column ?? ''}</td>
                   <td>${numberFmt(r.missing)}</td>
                   <td>${pct}</td>
                 `;
-                dqBody.appendChild(tr);
-              });
-              dq.style.display = 'block';
+                        dqBody.appendChild(tr);
+                    });
+                    dq.style.display = 'block';
+                }
+
+                if (json.formats && typeof json.formats === 'object') {
+                    const rows = [
+                        ["email_invalid", "Invalid Emails"],
+                        ["future_dates", "Future Dates"],
+                        ["unrealistic_ages", "Unrealistic Ages"],
+                    ];
+                    let idx = 1, any = false;
+                    rows.forEach(([key, label]) => {
+                        const val = json.formats[key];
+                        if (typeof val === 'number') {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                              <td>${idx++}</td>
+                              <td>${label}</td>
+                              <td>${numberFmt(val)}</td>
+                            `;
+                            formatsBody.appendChild(tr);
+                            any = true;
+                        }
+                    });
+                    if (any) formatsSection.style.display = 'block';
+                }
+                if (json.duplicates) {
+                    dPre.textContent = JSON.stringify(json.duplicates, null, 2);
+                    dSection.style.display = 'block';
+                }
+                if (json.outliers) {
+                    oPre.textContent = JSON.stringify(json.outliers, null, 2);
+                    oSection.style.display = 'block';
+                }
+                if (json.rules) {
+                    rPre.textContent = JSON.stringify(json.rules, null, 2);
+                    rSection.style.display = 'block';
+                }
+            } else {
+                err.textContent = (json && (json.error || json.message)) || `HTTP ${res.status}`;
+                err.style.display = "block";
             }
-          } else {
-            err.textContent = (json && (json.error || json.message)) || `HTTP ${res.status}`;
-            err.style.display = "block";
-          }
         } catch (e) {
-          result.textContent = `Error: ${e}`;
-          err.textContent = String(e);
-          err.style.display = "block";
+            result.textContent = `Error: ${e}`;
+            err.textContent = String(e);
+            err.style.display = "block";
         }
-      });
-    </script>
-  </body>
+    });
+</script>
+</body>
 </html>
