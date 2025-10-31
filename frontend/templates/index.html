@@ -124,7 +124,7 @@
 
     <div id="dq" style="display:none">
         <h3>Missing Values by Column</h3>
-        <p><small>Sorted by missing count (desc). Showing up to 500 columns.</small></p>
+        <p><small>Sorted by missing count (desc).</small></p>
         <table id="dq-null-table">
             <thead>
             <tr>
@@ -167,8 +167,17 @@
     </div>
 
     <div id="dups" style="display:none">
-        <h3>Duplicates</h3>
-        <pre id="dups-pre"></pre>
+        <h3>Total Duplicate Records</h3>
+        <table id="dups-table">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Metric</th>
+                <th>Count</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
     </div>
 
     <div id="outliers" style="display:none">
@@ -201,8 +210,8 @@
     const logicsSection = document.getElementById('logics');
     const logicsBody = document.querySelector('#logics-table tbody');
 
-    const dSection = document.getElementById('dups');
-    const dPre = document.getElementById('dups-pre');
+    const dupsSection = document.getElementById('dups');
+    const dupsBody = document.querySelector('#dups-table tbody');
 
     const oSection = document.getElementById('outliers');
     const oPre = document.getElementById('outliers-pre');
@@ -235,8 +244,8 @@
         formatsBody.innerHTML = '';
         logicsSection.style.display = "none";
         logicsBody.innerHTML = '';
-        dSection.style.display = "none";
-        dPre.textContent = '';
+        dupsSection.style.display = "none";
+        dupsBody.textContent = '';
         oSection.style.display = "none";
         oPre.textContent = '';
         rSection.style.display = "none";
@@ -268,15 +277,16 @@
 
                 if (Array.isArray(json.nulls)) {
                     json.nulls.forEach((r, i) => {
-                        const tr = document.createElement('tr');
-                        const pct = (typeof r.missing_pct === 'number') ? r.missing_pct.toFixed(2) + '%' : r.missing_pct;
-                        tr.innerHTML = `
-                  <td>${i + 1}</td>
-                  <td>${r.column ?? ''}</td>
-                  <td>${numberFmt(r.missing)}</td>
-                  <td>${pct}</td>
-                `;
-                        dqBody.appendChild(tr);
+                        if (r.missing > 0) {
+                            const tr = document.createElement('tr');
+                            const pct = (typeof r.missing_pct === 'number') ? r.missing_pct.toFixed(2) + '%' : r.missing_pct;
+                            tr.innerHTML = `
+                                  <td>${i + 1}</td>
+                                  <td>${r.column ?? ''}</td>
+                                  <td>${numberFmt(r.missing)}</td>
+                                  <td>${pct}</td>`;
+                            dqBody.appendChild(tr);
+                        }
                     });
                     dq.style.display = 'block';
                 }
@@ -290,7 +300,7 @@
                     let idx = 1, any = false;
                     rows.forEach(([key, label]) => {
                         const val = json.formats[key];
-                        if (typeof val === 'number') {
+                        if (typeof val === 'number' && val > 0) {
                             const tr = document.createElement('tr');
                             tr.innerHTML = `
                               <td>${idx++}</td>
@@ -312,7 +322,7 @@
                     let idx = 1, any = false;
                     rows.forEach(([key, label]) => {
                         const val = json.logical_inconsistencies[key];
-                        if (typeof val === 'number') {
+                        if (typeof val === 'number' && val > 0) {
                             const tr = document.createElement('tr');
                             tr.innerHTML = `
                               <td>${idx++}</td>
@@ -326,16 +336,17 @@
                     if (any) logicsSection.style.display = 'block';
                 }
                 if (json.duplicates) {
-                    dPre.textContent = JSON.stringify(json.duplicates, null, 2);
-                    dSection.style.display = 'block';
-                }
-                if (json.outliers) {
-                    oPre.textContent = JSON.stringify(json.outliers, null, 2);
-                    oSection.style.display = 'block';
-                }
-                if (json.rules) {
-                    rPre.textContent = JSON.stringify(json.rules, null, 2);
-                    rSection.style.display = 'block';
+                    const val = json.duplicates;
+                    if (typeof val === 'number' && val > 0) {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                              <td>1</td>
+                              <td>Duplicate Records Found</td>
+                              <td>${numberFmt(val)}</td>
+                            `;
+                        dupsBody.appendChild(tr);
+                    }
+                    dupsSection.style.display = 'block';
                 }
             } else {
                 err.textContent = (json && (json.error || json.message)) || `HTTP ${res.status}`;

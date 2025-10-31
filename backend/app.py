@@ -35,7 +35,8 @@ def init_db():
                 column_count INTEGER,
                 nulls_json TEXT,            -- JSON array of {column, missing, missing_pct}
                 formats_json TEXT,
-                logical_inconsistencies TEXT,
+                logical_inconsistencies_json TEXT,
+                duplicate_records_json TEXT,
                 duplicates_json TEXT,       -- simple duplicate counts
                 outliers_json TEXT,         -- numeric outlier counts per column
                 rules_json TEXT,            -- business-rule violations
@@ -195,13 +196,12 @@ def upload():
             "stock_less_reorder": stock_less_reorder,
         }
 
-        # Probe 4: Duplicates
+        total_duplicates_records = 0
         if "email" in df.columns:
             dups_by_email = int(df["email"].dropna().duplicated().sum())
-            dups["by_email"] = dups_by_email
-        dups["full_row"] = int(df.duplicated().sum())
+            total_duplicates_records += dups_by_email
 
-        # Probe 5: Outliers (IQR on numeric columns)
+
         outliers = {}
         num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
         for c in num_cols:
@@ -232,6 +232,7 @@ def upload():
             "formats_total": int(formats.get("email_invalid", 0))
                              + int(formats.get("future_dates", 0))
                              + int(formats.get("unrealistic_ages", 0)),
+            "logical_inconsistencies": logical_inconsistencies,
             "duplicates": sum(v for v in dups.values() if isinstance(v, int)),
             "outliers": sum(outliers.values()) if outliers else 0,
             "rule_violations": sum(rules.get("violations", {}).values()) if isinstance(rules, dict) else 0,
@@ -242,7 +243,7 @@ def upload():
             try:
                 conn.execute(
                     "INSERT INTO uploads (filename, saved_to, row_count, column_count, "
-                    "nulls_json, formats_json, logical_inconsistencies, duplicates_json, outliers_json, rules_json, summary_json, uploaded_at) "
+                    "nulls_json, formats_json, logical_inconsistencies_json, duplicate_records_json, outliers_json, rules_json, summary_json, uploaded_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (filename, dest_path, None, None, None, None, None, None, None, None, datetime.now(timezone.utc).isoformat()),
                 )
@@ -263,12 +264,12 @@ def upload():
     with get_db() as conn:
         conn.execute(
             "INSERT INTO uploads (filename, saved_to, row_count, column_count, "
-            "nulls_json, formats_json, logical_inconsistencies, duplicates_json, outliers_json, rules_json, summary_json, uploaded_at) "
+            "nulls_json, formats_json, logical_inconsistencies_json, duplicate_records_json, outliers_json, rules_json, summary_json, uploaded_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename, dest_path, int(rows), int(cols),
                 json.dumps(nulls_light),
-                json.dumps(formats), json.dumps(logical_inconsistencies), json.dumps(dups),
+                json.dumps(formats), json.dumps(logical_inconsistencies), json.dumps(total_duplicates_records),
                 json.dumps(outliers), json.dumps(rules),
                 json.dumps(summary), datetime.now(timezone.utc).isoformat(),
             ),
@@ -284,7 +285,7 @@ def upload():
         "nulls": nulls_light,
         "formats": formats,
         "logical_inconsistencies": logical_inconsistencies,
-        "duplicates": dups,
+        "duplicates": total_duplicates_records,
         "outliers": outliers,
         "rules": rules,
         "summary": summary
