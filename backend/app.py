@@ -35,6 +35,7 @@ def init_db():
                 column_count INTEGER,
                 nulls_json TEXT,            -- JSON array of {column, missing, missing_pct}
                 formats_json TEXT,
+                logical_inconsistencies TEXT,
                 duplicates_json TEXT,       -- simple duplicate counts
                 outliers_json TEXT,         -- numeric outlier counts per column
                 rules_json TEXT,            -- business-rule violations
@@ -118,7 +119,6 @@ def upload():
     rows = cols = 0
     columns = []
     nulls_light, types_light = [], []
-    formats = {}
     dups, outliers, rules, summary = {}, {}, {}, {}
 
     try:
@@ -135,7 +135,7 @@ def upload():
             .sort_values(["missing", "column"], ascending=[False, True])
             .to_dict(orient="records")
         )
-        nulls_light = nulls[:500]
+        nulls_light = nulls
 
         invalid_emails = 0
         email_re = re.compile(r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
@@ -165,6 +165,36 @@ def upload():
             "unrealistic_ages": total_unrealistic_ages,
         }
 
+        sell_less_cost = 0.0
+        if "cost_price" in df.columns and "selling_price" in df.columns:
+            cost = pd.to_numeric(df["cost_price"], errors="coerce")
+            sell = pd.to_numeric(df["selling_price"], errors="coerce")
+
+            valid = cost.notna() & sell.notna()
+            violate = (sell < cost) & valid
+
+            total = len(df)
+            total_violations = int(violate.sum())
+            sell_less_cost += round((total_violations / total * 100.0) if total else 0.0, 2)
+
+        stock_less_reorder = 0
+        if "current_stock" in df.columns and "reorder_level" in df.columns:
+            current_stock = pd.to_numeric(df["current_stock"], errors="coerce")
+            reorder_level = pd.to_numeric(df["reorder_level"], errors="coerce")
+            valid = current_stock.notna() & reorder_level.notna()
+            violate = (current_stock < reorder_level) & valid
+
+            total = len(df)
+            total_violations = int(violate.sum())
+            print(total_violations)
+
+            stock_less_reorder += round((total_violations / total * 100.0) if total else 0.0, 2)
+
+        logical_inconsistencies = {
+            "sell_less_cost": sell_less_cost,
+            "stock_less_reorder": stock_less_reorder,
+        }
+
         # Probe 4: Duplicates
         if "email" in df.columns:
             dups_by_email = int(df["email"].dropna().duplicated().sum())
@@ -185,38 +215,16 @@ def upload():
             lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
             outliers[c] = int(((s < lower) | (s > upper)).sum())
 
-        # Probe 6: Business-rule checks (dataset-aware)
-        rules = {"violations": {}}
-        cols_lower = {c.lower(): c for c in df.columns}
-
-        # Inventory: selling >= cost
-        if all(k in cols_lower for k in ("cost_price","selling_price")):
-            cp, sp = cols_lower["cost_price"], cols_lower["selling_price"]
-            mask = (pd.to_numeric(df[sp], errors="coerce")
-                    < pd.to_numeric(df[cp], errors="coerce"))
-            rules["violations"]["selling_below_cost"] = int(mask.sum())
-
-        # Inventory: stock >= reorder level
-        if all(k in cols_lower for k in ("current_stock","reorder_level")):
-            cs, rl = cols_lower["current_stock"], cols_lower["reorder_level"]
-            mask = (pd.to_numeric(df[cs], errors="coerce")
-                    < pd.to_numeric(df[rl], errors="coerce"))
-            rules["violations"]["stock_below_reorder"] = int(mask.sum())
-
-        # Customers: realistic age
-        if "age" in cols_lower:
-            age = pd.to_numeric(df[cols_lower["age"]], errors="coerce")
-            rules["violations"]["unrealistic_age"] = int(((age < 0) | (age > 120)).sum())
 
         # Transactions: non-negative totals
-        if "total_amount" in cols_lower:
-            ta = pd.to_numeric(df[cols_lower["total_amount"]], errors="coerce")
-            rules["violations"]["negative_total_amount"] = int((ta < 0).sum())
+        # if "total_amount" in cols_lower:
+        #     ta = pd.to_numeric(df[cols_lower["total_amount"]], errors="coerce")
+        #     rules["violations"]["negative_total_amount"] = int((ta < 0).sum())
 
         # Transactions: placeholder invalid method example
-        if "payment_method" in cols_lower:
-            pm = df[cols_lower["payment_method"]].astype(str)
-            rules["violations"]["invalid_payment_method"] = int((pm == "INVALID_METHOD").sum())
+        # if "payment_method" in cols_lower:
+        #     pm = df[cols_lower["payment_method"]].astype(str)
+        #     rules["violations"]["invalid_payment_method"] = int((pm == "INVALID_METHOD").sum())
 
         # Summary rollup
         summary = {
@@ -234,8 +242,8 @@ def upload():
             try:
                 conn.execute(
                     "INSERT INTO uploads (filename, saved_to, row_count, column_count, "
-                    "nulls_json, formats_json, duplicates_json, outliers_json, rules_json, summary_json, uploaded_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "nulls_json, formats_json, logical_inconsistencies, duplicates_json, outliers_json, rules_json, summary_json, uploaded_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (filename, dest_path, None, None, None, None, None, None, None, None, datetime.now(timezone.utc).isoformat()),
                 )
             except Exception:
@@ -255,12 +263,12 @@ def upload():
     with get_db() as conn:
         conn.execute(
             "INSERT INTO uploads (filename, saved_to, row_count, column_count, "
-            "nulls_json, formats_json, duplicates_json, outliers_json, rules_json, summary_json, uploaded_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "nulls_json, formats_json, logical_inconsistencies, duplicates_json, outliers_json, rules_json, summary_json, uploaded_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename, dest_path, int(rows), int(cols),
                 json.dumps(nulls_light),
-                json.dumps(formats),json.dumps(dups),
+                json.dumps(formats), json.dumps(logical_inconsistencies), json.dumps(dups),
                 json.dumps(outliers), json.dumps(rules),
                 json.dumps(summary), datetime.now(timezone.utc).isoformat(),
             ),
@@ -275,6 +283,7 @@ def upload():
         "columns": columns[:50] if columns else [],
         "nulls": nulls_light,
         "formats": formats,
+        "logical_inconsistencies": logical_inconsistencies,
         "duplicates": dups,
         "outliers": outliers,
         "rules": rules,

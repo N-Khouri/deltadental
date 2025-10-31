@@ -142,7 +142,25 @@
         <h3>Formats</h3>
         <table id="formats-table">
             <thead>
-            <tr><th>#</th><th>Metric</th><th>Count</th></tr>
+            <tr>
+                <th>#</th>
+                <th>Metric</th>
+                <th>Count</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div id="logics" style="display:none">
+        <h3>Logical Inconsistencies</h3>
+        <table id="logics-table">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Metric</th>
+                <th>Count</th>
+            </tr>
             </thead>
             <tbody></tbody>
         </table>
@@ -180,6 +198,9 @@
     const formatsSection = document.getElementById('formats');
     const formatsBody = document.querySelector('#formats-table tbody');
 
+    const logicsSection = document.getElementById('logics');
+    const logicsBody = document.querySelector('#logics-table tbody');
+
     const dSection = document.getElementById('dups');
     const dPre = document.getElementById('dups-pre');
 
@@ -212,6 +233,8 @@
         dqBody.innerHTML = '';
         formatsSection.style.display = "none";
         formatsBody.innerHTML = '';
+        logicsSection.style.display = "none";
+        logicsBody.innerHTML = '';
         dSection.style.display = "none";
         dPre.textContent = '';
         oSection.style.display = "none";
@@ -279,6 +302,28 @@
                         }
                     });
                     if (any) formatsSection.style.display = 'block';
+                }
+
+                if (json.logical_inconsistencies && typeof json.logical_inconsistencies === 'object') {
+                    const rows = [
+                        ["sell_less_cost", "Current Stock Selling Less than Cost"],
+                        ["stock_less_reorder", "Current Stock Levels Less Than Reorder Levels"],
+                    ];
+                    let idx = 1, any = false;
+                    rows.forEach(([key, label]) => {
+                        const val = json.logical_inconsistencies[key];
+                        if (typeof val === 'number') {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                              <td>${idx++}</td>
+                              <td>${label}</td>
+                              <td>${numberFmt(val)}%</td>
+                            `;
+                            logicsBody.appendChild(tr);
+                            any = true;
+                        }
+                    });
+                    if (any) logicsSection.style.display = 'block';
                 }
                 if (json.duplicates) {
                     dPre.textContent = JSON.stringify(json.duplicates, null, 2);
