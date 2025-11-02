@@ -81,8 +81,6 @@
 </nav>
 
 <h1>Data Quality Dashboard</h1>
-<p><small>All core categories implemented: missing, types, invalid formats, duplicates, outliers, business
-    rules.</small></p>
 
 <div class="card">
     <form id="upload-form">
@@ -118,13 +116,22 @@
             </tr>
             </tbody>
         </table>
-        <h4>Headers (first 50)</h4>
-        <pre id="m-columns"></pre>
+        <div id="cols" style="display:none">
+            <h4>All Headers</h4>
+            <table id="cols-table">
+                <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Column</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
     </div>
 
     <div id="dq" style="display:none">
         <h3>Missing Values by Column</h3>
-        <p><small>Sorted by missing count (desc).</small></p>
         <table id="dq-null-table">
             <thead>
             <tr>
@@ -146,6 +153,7 @@
                 <th>#</th>
                 <th>Metric</th>
                 <th>Count</th>
+                <th>Error % (rounded to the nearest thousandth)</th>
             </tr>
             </thead>
             <tbody></tbody>
@@ -160,6 +168,7 @@
                 <th>#</th>
                 <th>Metric</th>
                 <th>Count</th>
+                <th>Error % (rounded to the nearest thousandth)</th>
             </tr>
             </thead>
             <tbody></tbody>
@@ -174,6 +183,7 @@
                 <th>#</th>
                 <th>Metric</th>
                 <th>Count</th>
+                <th>Error % (rounded to the nearest thousandth)</th>
             </tr>
             </thead>
             <tbody></tbody>
@@ -181,13 +191,18 @@
     </div>
 
     <div id="outliers" style="display:none">
-        <h3>Outliers (IQR)</h3>
-        <pre id="outliers-pre"></pre>
-    </div>
-
-    <div id="rules" style="display:none">
-        <h3>Business-Rule Violations</h3>
-        <pre id="rules-pre"></pre>
+        <h3>Outliers</h3>
+        <table id="outliers-table">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Metric</th>
+                <th>Count</th>
+                <th>Error % (rounded to the nearest thousandth)</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
     </div>
 
     <h3>Raw Response</h3>
@@ -201,6 +216,9 @@
     const err = document.getElementById("error");
     const meta = document.getElementById("meta");
 
+    const cols = document.getElementById("cols");
+    const colsBody = document.querySelector("#cols-table tbody");
+
     const dq = document.getElementById("dq");
     const dqBody = document.querySelector('#dq-null-table tbody');
 
@@ -213,11 +231,8 @@
     const dupsSection = document.getElementById('dups');
     const dupsBody = document.querySelector('#dups-table tbody');
 
-    const oSection = document.getElementById('outliers');
-    const oPre = document.getElementById('outliers-pre');
-
-    const rSection = document.getElementById('rules');
-    const rPre = document.getElementById('rules-pre');
+    const outlierSection = document.getElementById('outliers');
+    const outlierBody = document.querySelector('#outliers-table tbody');
 
     const mFile = document.getElementById("m-filename");
     const mPath = document.getElementById("m-saved");
@@ -238,6 +253,8 @@
         err.style.display = "none";
         meta.style.display = "none";
 
+        cols.style.display = "none";
+        colsBody.innerHTML = '';
         dq.style.display = "none";
         dqBody.innerHTML = '';
         formatsSection.style.display = "none";
@@ -246,10 +263,8 @@
         logicsBody.innerHTML = '';
         dupsSection.style.display = "none";
         dupsBody.textContent = '';
-        oSection.style.display = "none";
-        oPre.textContent = '';
-        rSection.style.display = "none";
-        rPre.textContent = '';
+        outlierSection.style.display = "none";
+        outlierBody.textContent = '';
 
         result.textContent = "Uploading...";
 
@@ -272,7 +287,16 @@
                 if (json.saved_to) mPath.textContent = json.saved_to;
                 if (typeof json.row_count === 'number') mRows.textContent = numberFmt(json.row_count);
                 if (typeof json.column_count === 'number') mCols.textContent = numberFmt(json.column_count);
-                if (Array.isArray(json.columns)) mColsList.textContent = JSON.stringify(json.columns, null, 2);
+                if (json.columns && Array.isArray(json.columns)) {
+                    json.columns.forEach((col, i) => {
+                        const tr = document.createElement("tr");
+                        tr.innerHTML = `
+                        <td>${++i}</td>
+                        <td>${col}</td>`
+                        colsBody.appendChild(tr);
+                    })
+                    cols.style.display = "block";
+                }
                 meta.style.display = "block";
 
                 if (Array.isArray(json.nulls)) {
@@ -293,19 +317,23 @@
 
                 if (json.formats && typeof json.formats === 'object') {
                     const rows = [
-                        ["email_invalid", "Invalid Emails"],
-                        ["future_dates", "Future Dates"],
-                        ["unrealistic_ages", "Unrealistic Ages"],
+                        ["email_invalid", "email_invalid_pct", "Invalid Emails"],
+                        ["future_dates", "future_dates_pct", "Future Dates"],
+                        ["unrealistic_ages", "total_unrealistic_pct", "Unrealistic Ages"],
+                        ["invalid_statuses", "invalid_statuses_pct", "Invalid Statuses"],
                     ];
                     let idx = 1, any = false;
-                    rows.forEach(([key, label]) => {
+                    rows.forEach(([key, pct, label]) => {
                         const val = json.formats[key];
+                        const pct_val = json.formats[pct].toFixed(2) >= 0.01 ? json.formats[pct].toFixed(2) + "%" : "Too small of a margin";
+
                         if (typeof val === 'number' && val > 0) {
                             const tr = document.createElement('tr');
                             tr.innerHTML = `
-                              <td>${idx++}</td>
-                              <td>${label}</td>
-                              <td>${numberFmt(val)}</td>
+                                <td>${idx++}</td>
+                                <td>${label}</td>
+                                <td>${numberFmt(val)}</td>
+                                <td>${pct_val}</td>
                             `;
                             formatsBody.appendChild(tr);
                             any = true;
@@ -316,18 +344,20 @@
 
                 if (json.logical_inconsistencies && typeof json.logical_inconsistencies === 'object') {
                     const rows = [
-                        ["sell_less_cost", "Current Stock Selling Less than Cost"],
-                        ["stock_less_reorder", "Current Stock Levels Less Than Reorder Levels"],
+                        ["sell_less_cost", "sell_less_cost_pct", "Current Stock Selling Less than Cost"],
+                        ["stock_less_reorder", "stock_less_reorder_pct", "Current Stock Levels Less Than Reorder Levels"],
                     ];
                     let idx = 1, any = false;
-                    rows.forEach(([key, label]) => {
+                    rows.forEach(([key, pct, label]) => {
                         const val = json.logical_inconsistencies[key];
+                        const pct_val = json.logical_inconsistencies[pct].toFixed(2) >= 0.01 ? json.logical_inconsistencies[pct].toFixed(2) + "%" : "Too small of a margin";
                         if (typeof val === 'number' && val > 0) {
                             const tr = document.createElement('tr');
                             tr.innerHTML = `
-                              <td>${idx++}</td>
-                              <td>${label}</td>
-                              <td>${numberFmt(val)}%</td>
+                                <td>${idx++}</td>
+                                <td>${label}</td>
+                                <td>${numberFmt(val)}</td>
+                                <td>${pct_val}</td>
                             `;
                             logicsBody.appendChild(tr);
                             any = true;
@@ -336,17 +366,51 @@
                     if (any) logicsSection.style.display = 'block';
                 }
                 if (json.duplicates) {
-                    const val = json.duplicates;
-                    if (typeof val === 'number' && val > 0) {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                              <td>1</td>
-                              <td>Duplicate Records Found</td>
-                              <td>${numberFmt(val)}</td>
+                    rows = [
+                        ["total_duplicates_records", "total_duplicates_records_pct", "Duplicate Records Found"],
+                    ]
+                    let any = false;
+                    rows.forEach(([key, pct, label], i) => {
+                        const val = json.duplicates[key];
+                        const pct_val = json.duplicates[pct].toFixed(2) > 0.01 ? json.duplicates[pct].toFixed(2) + "%" : "Too small of a margin";
+                        if (typeof val === 'number' && val > 0) {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td>${++i}</td>
+                                <td>${label}</td>
+                                <td>${numberFmt(val)}</td>
+                                <td>${pct_val}</td>
                             `;
-                        dupsBody.appendChild(tr);
-                    }
-                    dupsSection.style.display = 'block';
+                            dupsBody.appendChild(tr);
+                            any = true;
+                        }
+                    })
+                    if (any) dupsSection.style.display = 'block';
+                }
+
+                if (json.outliers) {
+                    const rows = [
+                        ["total_invalid_methods", "total_invalid_methods_pct", "Total Invalid Payment Methods"],
+                        ["negative_total_amount", "negative_total_amount_pct", "Negative Total Amount"],
+                        ["error_total_amount", "error_total_amount_pct", "Total Unknown Total Amount"]
+                    ]
+                    let idx = 1, any = false;
+                    rows.forEach(([key, pct, label]) => {
+                        const val = json.outliers[key];
+                        const pct_val = json.outliers[pct].toFixed(2) >= 0.01 ? json.outliers[pct].toFixed(2) + "%" : "Too small of a margin";
+                        if (typeof val === 'number' && val > 0) {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                            <td>${idx++}</td>
+                            <td>${label}</td>
+                            <td>${numberFmt(val)}</td>
+                            <td>${pct_val}</td>
+                            `
+                            outlierBody.appendChild(tr);
+                            any = true;
+                        }
+                    })
+                    if (any) outlierSection.style.display = 'block';
                 }
             } else {
                 err.textContent = (json && (json.error || json.message)) || `HTTP ${res.status}`;

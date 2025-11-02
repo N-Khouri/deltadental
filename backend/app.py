@@ -1,4 +1,5 @@
 from flask import Flask, request, render_template, jsonify
+from pandas.core.dtypes.common import is_numeric_dtype
 from werkzeug.utils import secure_filename
 import os
 import pandas as pd
@@ -37,9 +38,8 @@ def init_db():
                 formats_json TEXT,
                 logical_inconsistencies_json TEXT,
                 duplicate_records_json TEXT,
-                duplicates_json TEXT,       -- simple duplicate counts
+                outliers_json TEXT,
                 outliers_json TEXT,         -- numeric outlier counts per column
-                rules_json TEXT,            -- business-rule violations
                 summary_json TEXT,          -- small rollup counts
                 uploaded_at TEXT NOT NULL   -- ISO timestamp
             );
@@ -123,10 +123,12 @@ def upload():
     dups, outliers, rules, summary = {}, {}, {}, {}
 
     try:
+        # Read the files
         df = pd.read_csv(dest_path, low_memory=False)
         rows, cols = df.shape
         columns = df.columns.tolist()
 
+        # Calculate missing entries for all columns
         null_counts = df.isna().sum()
         null_pct = (df.isna().mean() * 100).round(2)
         nulls = (
@@ -138,6 +140,7 @@ def upload():
         )
         nulls_light = nulls
 
+        # Calculate any format errors for all columns
         invalid_emails = 0
         email_re = re.compile(r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
         if "email" in df.columns:
@@ -145,6 +148,7 @@ def upload():
             ser = ser.dropna()
             mask = ~ser.str.fullmatch(email_re)
             invalid_emails += int(mask.sum())
+        invalid_emails_pct = round((invalid_emails / rows) * 100, 3)
 
         today = datetime.now(timezone.utc).isoformat()
         header = [c for c in df.columns if "date" in c.lower()]
@@ -153,20 +157,35 @@ def upload():
         for date_col in dates:
             if date_col > today:
                 total_future_dates += 1
+        total_future_dates_pct = round((total_future_dates / rows) * 100 if rows else 0.0, 3)
 
         total_unrealistic_ages = 0
         if "age" in df.columns:
             for age in df["age"]:
                 if age < 18 or age > 100:
                     total_unrealistic_ages += 1
+        total_unrealistic_pct = round((total_unrealistic_ages / rows) * 100 if rows else 0.0, 3)
+
+        total_invalid_statuses = 0
+        if "status" in df.columns:
+            status_col = df["status"].dropna().astype(str)
+            total_invalid_statuses += int((status_col == "UNKNOWN").sum())
+        total_invalid_statuses_pct = round((total_invalid_statuses / rows) * 100 if rows else 0.0, 3)
 
         formats = {
             "email_invalid": invalid_emails,
+            "email_invalid_pct": invalid_emails_pct,
             "future_dates": total_future_dates,
+            "future_dates_pct": total_future_dates_pct,
             "unrealistic_ages": total_unrealistic_ages,
+            "total_unrealistic_pct": total_unrealistic_pct,
+            "invalid_statuses": total_invalid_statuses,
+            "invalid_statuses_pct": total_invalid_statuses_pct,
         }
 
-        sell_less_cost = 0.0
+        # Calculate any logical inconsistencies found for all columns
+        sell_less_cost = 0
+        sell_less_cost_pct = 0
         if "cost_price" in df.columns and "selling_price" in df.columns:
             cost = pd.to_numeric(df["cost_price"], errors="coerce")
             sell = pd.to_numeric(df["selling_price"], errors="coerce")
@@ -174,10 +193,12 @@ def upload():
             valid = cost.notna() & sell.notna()
             violate = (sell < cost) & valid
 
-            total = len(df)
             total_violations = int(violate.sum())
-            sell_less_cost += round((total_violations / total * 100.0) if total else 0.0, 2)
 
+            sell_less_cost += total_violations
+            sell_less_cost_pct += round((total_violations / rows) * 100 if rows else 0.0, 3)
+
+        stock_less_reorder_pct = 0
         stock_less_reorder = 0
         if "current_stock" in df.columns and "reorder_level" in df.columns:
             current_stock = pd.to_numeric(df["current_stock"], errors="coerce")
@@ -185,48 +206,64 @@ def upload():
             valid = current_stock.notna() & reorder_level.notna()
             violate = (current_stock < reorder_level) & valid
 
-            total = len(df)
             total_violations = int(violate.sum())
-            print(total_violations)
 
-            stock_less_reorder += round((total_violations / total * 100.0) if total else 0.0, 2)
+            stock_less_reorder += total_violations
+            stock_less_reorder_pct += round((total_violations / rows) * 100 if rows else 0.0, 3)
 
         logical_inconsistencies = {
             "sell_less_cost": sell_less_cost,
+            "sell_less_cost_pct": sell_less_cost_pct,
             "stock_less_reorder": stock_less_reorder,
+            "stock_less_reorder_pct": stock_less_reorder_pct,
         }
 
+        # Calculate how many duplicate records where found. Determined by repeated emails.
         total_duplicates_records = 0
+        total_duplicates_records_pct = 0
         if "email" in df.columns:
             dups_by_email = int(df["email"].dropna().duplicated().sum())
             total_duplicates_records += dups_by_email
+            total_duplicates_records_pct += round((dups_by_email / rows) * 100 if rows else 0.0, 3)
+        print(total_duplicates_records_pct)
 
+        duplicate_records = {
+            "total_duplicates_records": total_duplicates_records,
+            "total_duplicates_records_pct": total_duplicates_records_pct,
+        }
 
-        outliers = {}
-        num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-        for c in num_cols:
-            s = df[c].dropna()
-            if s.empty:
-                continue
-            q1, q3 = s.quantile(0.25), s.quantile(0.75)
-            iqr = q3 - q1
-            if iqr == 0:
-                continue
-            lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-            outliers[c] = int(((s < lower) | (s > upper)).sum())
+        # Calculate any outliers found. E.g., invalid payment methods, negative total amounts/errors, ...
+        total_invalid_methods = 0
+        total_invalid_methods_pct = 0
+        if "payment_method" in df.columns:
+            im = df["payment_method"].dropna().astype(str)
+            total_invalid_methods += int((im == "INVALID_METHOD").sum())
 
+            total_invalid_methods_pct += round((total_invalid_methods / rows) * 100 if rows else 0.0, 3)
 
-        # Transactions: non-negative totals
-        # if "total_amount" in cols_lower:
-        #     ta = pd.to_numeric(df[cols_lower["total_amount"]], errors="coerce")
-        #     rules["violations"]["negative_total_amount"] = int((ta < 0).sum())
+        negative_total_amount = 0
+        negative_total_amount_pct = 0
+        error_total_amount = 0
+        error_total_amount_pct = 0
+        if "total_amount" in df.columns:
+            total_amount = df["total_amount"].dropna()
+            tm = pd.to_numeric(total_amount, errors="coerce")
 
-        # Transactions: placeholder invalid method example
-        # if "payment_method" in cols_lower:
-        #     pm = df[cols_lower["payment_method"]].astype(str)
-        #     rules["violations"]["invalid_payment_method"] = int((pm == "INVALID_METHOD").sum())
+            negative_total_amount += int((tm < 0).sum())
+            error_total_amount += int((tm.isna()).sum())
 
-        # Summary rollup
+            negative_total_amount_pct += round((negative_total_amount / rows) * 100 if rows else 0.0, 3)
+            error_total_amount_pct += round((error_total_amount / rows) * 100 if rows else 0.0, 3)
+
+        outliers = {
+            "total_invalid_methods": total_invalid_methods,
+            "total_invalid_methods_pct": total_invalid_methods_pct,
+            "negative_total_amount": negative_total_amount,
+            "negative_total_amount_pct": negative_total_amount_pct,
+            "error_total_amount": error_total_amount,
+            "error_total_amount_pct": error_total_amount_pct,
+        }
+
         summary = {
             "missing_cols": int((null_counts > 0).sum()),
             "formats_total": int(formats.get("email_invalid", 0))
@@ -269,7 +306,7 @@ def upload():
             (
                 filename, dest_path, int(rows), int(cols),
                 json.dumps(nulls_light),
-                json.dumps(formats), json.dumps(logical_inconsistencies), json.dumps(total_duplicates_records),
+                json.dumps(formats), json.dumps(logical_inconsistencies), json.dumps(duplicate_records),
                 json.dumps(outliers), json.dumps(rules),
                 json.dumps(summary), datetime.now(timezone.utc).isoformat(),
             ),
@@ -281,11 +318,11 @@ def upload():
         "saved_to": dest_path,
         "row_count": rows or 0,
         "column_count": cols or 0,
-        "columns": columns[:50] if columns else [],
+        "columns": columns if columns else [],
         "nulls": nulls_light,
         "formats": formats,
         "logical_inconsistencies": logical_inconsistencies,
-        "duplicates": total_duplicates_records,
+        "duplicates": duplicate_records,
         "outliers": outliers,
         "rules": rules,
         "summary": summary
