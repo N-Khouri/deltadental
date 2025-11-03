@@ -1,5 +1,5 @@
+import numpy as np
 from flask import Flask, request, render_template, jsonify
-from pandas.core.dtypes.common import is_numeric_dtype
 from werkzeug.utils import secure_filename
 import os
 import pandas as pd
@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime, timezone
 import json
 import re
+from collections import Counter
 
 ALLOWED_EXTENSIONS = {"csv"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
@@ -255,6 +256,30 @@ def upload():
             negative_total_amount_pct += round((negative_total_amount / rows) * 100 if rows else 0.0, 3)
             error_total_amount_pct += round((error_total_amount / rows) * 100 if rows else 0.0, 3)
 
+        total_pricing_error = 0
+        total_pricing_error_pct = 0
+        if "product_id" in df.columns and "unit_price" in df.columns and "product_name" in df.columns:
+            unit_price = pd.to_numeric(df["unit_price"], errors="coerce").round(2)
+            tmp = df.assign(__price_cents=unit_price)
+
+            def canonical_price(series):
+                s = series.dropna()
+                if s.empty:
+                    return np.nan
+                counts = Counter(s)
+                max_count = max(counts.values())
+                modes = [p for p, c in counts.items() if c == max_count]
+                return float(np.nanmin(modes))
+
+            grp = tmp.groupby(["product_id", "product_name"], dropna=False)
+            canon = grp["__price_cents"].apply(canonical_price).rename("canonical_unit_price")
+            res = tmp.merge(canon, on=["product_id", "product_name"], how="left")
+
+            valid = res["__price_cents"].notna() & res["canonical_unit_price"].notna()
+            res["is_outlier"] = valid & (res["__price_cents"] != res["canonical_unit_price"])
+            total_pricing_error += int((res["is_outlier"] == True).sum())
+            total_pricing_error_pct += round((total_pricing_error / rows) * 100 if rows else 0.0, 3)
+
         outliers = {
             "total_invalid_methods": total_invalid_methods,
             "total_invalid_methods_pct": total_invalid_methods_pct,
@@ -262,6 +287,8 @@ def upload():
             "negative_total_amount_pct": negative_total_amount_pct,
             "error_total_amount": error_total_amount,
             "error_total_amount_pct": error_total_amount_pct,
+            "total_pricing_error": total_pricing_error,
+            "total_pricing_error_pct": total_pricing_error_pct,
         }
 
         summary = {
