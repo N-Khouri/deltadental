@@ -1,68 +1,393 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>Data Quality Dashboard – History</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
-      nav { margin-bottom: 1rem; }
-      nav a { margin-right: 1rem; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #e5e7eb; padding: .5rem; text-align: left; }
-      th { background: #f9fafb; }
-      small { color: #6b7280; }
-      .muted { color: #6b7280; font-size: .9em; }
-      code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
+        :root {
+            --bg: #0b0f14;
+            --card: #10161d;
+            --muted: #8b98a5;
+            --border: #1f2a35;
+            --text: #e5eef7;
+            --accent: #4ea1ff;
+            --accent-2: #22c55e;
+            --accent-3: #f59e0b;
+            --accent-4: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+        }
+
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background: linear-gradient(180deg, #0b0f14, #0e141b);
+            color: var(--text);
+        }
+
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(6px);
+            background: rgba(11, 15, 20, .7);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 1rem 1.25rem;
+        }
+
+        nav a {
+            color: var(--muted);
+            text-decoration: none;
+            margin-right: 1rem;
+            font-weight: 600;
+            padding: .35rem .6rem;
+            border-radius: 8px;
+            border: 1px solid transparent;
+        }
+
+        nav a[aria-current="page"] {
+            color: var(--text);
+        }
+
+        nav a:hover,
+        nav a:focus-visible {
+            color: var(--text);
+            border-color: var(--border);
+            outline: none;
+        }
+
+        h1 {
+            margin: .5rem 0 0;
+            font-size: 1.5rem;
+            padding: .35rem .6rem;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: .75rem;
+            align-items: center;
+            margin-top: .75rem;
+        }
+
+        .search {
+            flex: 1;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: .6rem .8rem;
+            color: var(--text);
+            outline: none;
+        }
+
+        .table-wrap {
+            max-width: 1100px;
+            margin: 1rem auto 2rem;
+            padding: 0 1.25rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border-spacing: 0;
+            overflow: hidden;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--card);
+        }
+
+        thead th {
+            position: sticky;
+            background: #0d141b;
+            color: var(--muted);
+            font-weight: 600;
+            font-size: .85rem;
+            text-transform: uppercase;
+            letter-spacing: .02em;
+        }
+
+        th, td {
+            padding: .75rem .9rem;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            vertical-align: top;
+        }
+
+        tbody tr:hover {
+            background: rgba(78, 161, 255, .06);
+        }
+
+        code {
+            background: #0b1117;
+            border: 1px solid var(--border);
+            padding: 2px 6px;
+            border-radius: 6px;
+            color: #b7d7ff;
+        }
+
+        .size {
+            color: var(--muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .35rem .5rem;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            padding: .25rem .5rem;
+            border-radius: 999px;
+            font-size: .8rem;
+            border: 1px solid var(--border);
+            background: #0b1117;
+            color: var(--muted);
+        }
+
+        .chip strong {
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .chip.bad {
+            border-color: rgba(239, 68, 68, .5);
+        }
+
+        .chip.warn {
+            border-color: rgba(245, 158, 11, .5);
+        }
+
+        .chip.good {
+            border-color: rgba(34, 197, 94, .5);
+        }
+
+        .expander-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: .35rem .6rem;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .expander {
+            display: none;
+        }
+
+        .expander.open {
+            display: table-row;
+            background: #0b1117;
+        }
+
+        .expander td {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+        }
+
+        .grid > div {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: .6rem .7rem;
+            background: #0d141b;
+        }
+
+        .grid h4 {
+            margin: 0 0 .5rem;
+            font-size: .9rem;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        ul {
+            margin: 0;
+            padding-left: 1rem;
+        }
+
+        .footer {
+            color: var(--muted);
+            font-size: .85rem;
+            margin-top: .75rem;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            thead {
+                display: none;
+            }
+
+            tr, td {
+                display: block;
+            }
+
+            td {
+                border-bottom: none;
+            }
+
+            tbody tr {
+                border-bottom: 1px solid var(--border);
+            }
+        }
     </style>
-  </head>
-  <body>
-    <nav>
-      <a href="/">Upload</a>
-      <a href="/history">History</a>
-    </nav>
+</head>
+<body>
+<header>
+    <div class="wrap">
+        <nav>
+            <a href="/">Upload</a>
+            <a href="/history" aria-current="page">History</a>
+        </nav>
+        <h1>Upload History</h1>
+        <div class="toolbar">
+            <input id="search" class="search" placeholder="Filter by filename or ID…"/>
+            <span class="muted">Showing most recent 100 uploads</span>
+        </div>
+    </div>
+</header>
 
-    <h1>History</h1>
-    <p class="muted">Showing most recent 100 uploads.</p>
-
-    <table>
-      <thead>
+<main class="table-wrap">
+    <table id="history-table">
+        <thead>
         <tr>
-          <th>ID</th>
-          <th>Uploaded At (UTC)</th>
-          <th>Filename</th>
-          <th>Rows</th>
-          <th>Cols</th>
-          <th>Top Null Columns</th>
-          <th>Counts (formats, dups, outliers, rules)</th>
+            <th style="width: 70px;">ID</th>
+            <th>Uploaded (UTC)</th>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>Issues at a Glance</th>
+            <th>Details</th>
         </tr>
-      </thead>
-      <tbody>
+        </thead>
+        <tbody>
         {% for r in records %}
-        <tr>
-          <td>{{ r.id }}</td>
-          <td><code>{{ r.uploaded_at }}</code></td>
-          <td>{{ r.filename }}</td>
-          <td>{{ r.row_count if r.row_count is not none else '-' }}</td>
-          <td>{{ r.column_count if r.column_count is not none else '-' }}</td>
-          <td>
-            {% if r.top3_null and r.top3_null|length > 0 %}
-              {{ r.top3_null | join(', ') }}
-            {% else %}
-              <span class="muted">(none)</span>
-            {% endif %}
-          </td>
-          <td>
-            <code>
-              formats={{ r.counts.formats or 0 }},
-              dups={{ r.counts.duplicates or 0 }},
-              outliers={{ r.counts.outliers or 0 }},
-              rules={{ r.counts.rules or 0 }}
-            </code>
-          </td>
-        </tr>
+            {% set nulls_len = (r.top_nulls | length) %}
+            {% set formats_len = (r.top_formats | length) %}
+            {% set logics_len = (r.top_logics | length) %}
+            {% set dups_len = (r.top_duplicates | length) %}
+            {% set outliers_len = (r.top_outliers | length) %}
+            <tr data-row data-key="{{ r.id }} {{ r.filename }}">
+                <td><code>#{{ r.id }}</code></td>
+                <td><code>{{ r.uploaded_at }}</code></td>
+                <td>{{ r.filename }}</td>
+                <td class="size">{{ r.row_count if r.row_count is not none else '-' }}
+                    × {{ r.column_count if r.column_count is not none else '-' }}</td>
+                <td>
+                    <div class="chips">
+                        <span class="chip {% if nulls_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ nulls_len }}</strong> missing cols</span>
+                        <span class="chip {% if formats_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ formats_len }}</strong> format checks</span>
+                        <span class="chip {% if logics_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ logics_len }}</strong> logic flags</span>
+                        <span class="chip {% if dups_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ dups_len }}</strong> duplicates</span>
+                        <span class="chip {% if outliers_len > 0 %}bad{% else %}good{% endif %}"><strong>{{ outliers_len }}</strong> outliers</span>
+                    </div>
+                </td>
+                <td>
+                    <button class="expander-btn" data-toggle="#exp-{{ r.id }}">View</button>
+                </td>
+            </tr>
+            <tr class="expander" id="exp-{{ r.id }}">
+                <td colspan="6">
+                    <div class="grid">
+                        <div>
+                            <h4>Missing Entries per Column</h4>
+                            {% if r.top_nulls and r.top_nulls|length > 0 %}
+                                <ul>
+                                    {% for item in r.top_nulls %}
+                                        <li>{{ item }}</li>{% endfor %}
+                                </ul>
+                            {% else %}<span class="muted">(none)</span>{% endif %}
+                        </div>
+                        <div>
+                            <h4>Format Checks</h4>
+                            {% if r.top_formats and r.top_formats|length > 0 %}
+                                <ul>{% for item in r.top_formats %}
+                                    <li>{{ item }}</li>{% endfor %}</ul>
+                            {% else %}<span class="muted">(none)</span>{% endif %}
+                        </div>
+                        <div>
+                            <h4>Logical Inconsistencies</h4>
+                            {% if r.top_logics and r.top_logics|length > 0 %}
+                                <ul>{% for item in r.top_logics %}
+                                    <li>{{ item }}</li>{% endfor %}</ul>
+                            {% else %}<span class="muted">(none)</span>{% endif %}
+                        </div>
+                        <div>
+                            <h4>Duplicates</h4>
+                            {% if r.top_duplicates and r.top_duplicates|length > 0 %}
+                                <ul>{% for item in r.top_duplicates %}
+                                    <li>{{ item }}</li>{% endfor %}</ul>
+                            {% else %}<span class="muted">(none)</span>{% endif %}
+                        </div>
+                        <div>
+                            <h4>Outliers</h4>
+                            {% if r.top_outliers and r.top_outliers|length > 0 %}
+                                <ul>{% for item in r.top_outliers %}
+                                    <li>{{ item }}</li>{% endfor %}</ul>
+                            {% else %}<span class="muted">(none)</span>{% endif %}
+                        </div>
+                    </div>
+                    <div class="footer">Saved to disk at: <code>{{ r.saved_to }}</code></div>
+                </td>
+            </tr>
         {% endfor %}
-      </tbody>
+        </tbody>
     </table>
-  </body>
+</main>
+
+<script>
+    // Expand/collapse rows
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-toggle]');
+        if (!btn) return;
+        const sel = btn.getAttribute('data-toggle');
+        const row = document.querySelector(sel);
+        if (row) {
+            row.classList.toggle('open');
+            btn.textContent = row.classList.contains('open') ? 'Hide' : 'View';
+        }
+    });
+    // Simple client-side filter
+    const input = document.getElementById('search');
+    let rows = Array.from(document.querySelectorAll('[data-row]'));
+    input?.addEventListener('input', () => {
+        const q = (input.value || '').toLowerCase().trim();
+        for (const r of rows) {
+            const key = r.getAttribute('data-key')?.toLowerCase() || '';
+            const match = !q || key.includes(q);
+            r.style.display = match ? '' : 'none';
+            const expanderId = r.querySelector('[data-toggle]')?.getAttribute('data-toggle');
+            if (!match && expanderId) {
+                const expander = document.querySelector(expanderId);
+                if (expander) {
+                    expander.classList.remove('open');
+                }
+            }
+        }
+    });
+</script>
+</body>
 </html>

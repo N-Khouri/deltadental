@@ -40,7 +40,6 @@ def init_db():
                 logical_inconsistencies_json TEXT,
                 duplicate_records_json TEXT,
                 outliers_json TEXT,
-                outliers_json TEXT,         -- numeric outlier counts per column
                 summary_json TEXT,          -- small rollup counts
                 uploaded_at TEXT NOT NULL   -- ISO timestamp
             );
@@ -62,33 +61,30 @@ def history_page():
     with get_db() as conn:
         rows = conn.execute(
             "SELECT id, filename, saved_to, row_count, column_count, "
-            "nulls_json, emails, future_date, ages, duplicates_json, outliers_json, rules_json, summary_json, "
+            "nulls_json, formats_json, logical_inconsistencies_json, duplicate_records_json, outliers_json, summary_json, "
             "uploaded_at FROM uploads ORDER BY id DESC LIMIT 100"
         ).fetchall()
     records = []
     for r in rows:
         try:
             nulls = json.loads(r["nulls_json"]) if r["nulls_json"] else []
+            formats = json.loads(r["formats_json"]) if r["formats_json"] else []
+            logics = json.loads(r["logical_inconsistencies_json"]) if r["logical_inconsistencies_json"] else []
+            duplicates = json.loads(r["duplicate_records_json"]) if r["duplicate_records_json"] else []
+            outliers = json.loads(r["outliers_json"]) if r["outliers_json"] else []
         except Exception:
             nulls = []
-        top3_null = [f"{n.get('column')}: {n.get('missing_pct', 0)}%" for n in (nulls or [])[:3]]
+            formats = []
+            logics = []
+            duplicates = []
+            outliers = []
+        top_nulls = [f"{n.get('column')}: {n.get('missing_pct', 0)}%" for n in (nulls or []) if n.get('missing_pct', 0) > 0]
+        top_formats = [f"{key}: {value}{'%' if 'pct' in key else ''}" for key, value in (formats.items() or {}) if value > 0]
+        top_logics = [f"{key}: {value}{'%' if 'pct' in key else ''}" for key, value in (logics.items() or {}) if value > 0]
+        top_duplicates = [f"{key}: {value}{'%' if 'pct' in key else ''}" for key, value in (duplicates.items() or {}) if value > 0]
+        top_outliers = [f"{key}: {value}{'%' if 'pct' in key else ''}" for key, value in (outliers.items() or {}) if value > 0]
 
-        try:
-            formats = json.loads(r["formats_json"]) if r["formats_json"] else {}
-            dups = json.loads(r["duplicates_json"]) if r["duplicates_json"] else {}
-            outliers = json.loads(r["outliers_json"]) if r["outliers_json"] else {}
-            rules = json.loads(r["rules_json"]) if r["rules_json"] else {}
-        except Exception:
-            formats, dups, outliers, rules = {}, {}, {}, {}
-
-        counts = {
-            "formats": int(formats.get("email_invalid", 0))
-                       + (sum(formats.get("future_dates", {}).values())
-                          if isinstance(formats.get("future_dates"), dict) else 0),
-            "duplicates": sum(v for v in dups.values() if isinstance(v, int)),
-            "outliers": sum(outliers.values()) if isinstance(outliers, dict) else 0,
-            "rules": sum(rules.get("violations", {}).values()) if isinstance(rules, dict) else 0,
-        }
+        print(top_outliers)
 
         records.append({
             "id": r["id"],
@@ -97,8 +93,11 @@ def history_page():
             "row_count": r["row_count"],
             "column_count": r["column_count"],
             "uploaded_at": r["uploaded_at"],
-            "top3_null": top3_null,
-            "counts": counts,
+            "top_nulls": top_nulls,
+            "top_formats": top_formats,
+            "top_logics": top_logics,
+            "top_duplicates": top_duplicates,
+            "top_outliers": top_outliers,
         })
     return render_template("history.html", records=records)
 
@@ -307,15 +306,15 @@ def upload():
             try:
                 conn.execute(
                     "INSERT INTO uploads (filename, saved_to, row_count, column_count, "
-                    "nulls_json, formats_json, logical_inconsistencies_json, duplicate_records_json, outliers_json, rules_json, summary_json, uploaded_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (filename, dest_path, None, None, None, None, None, None, None, None, datetime.now(timezone.utc).isoformat()),
+                    "nulls_json, formats_json, logical_inconsistencies_json, duplicate_records_json, outliers_json, summary_json, uploaded_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (filename, dest_path, None, None, None, None, None, None, None, None, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                 )
             except Exception:
                 conn.execute(
                     "INSERT INTO uploads (filename, saved_to, row_count, column_count, nulls_json, uploaded_at) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    (filename, dest_path, None, None, None, datetime.now(timezone.utc).isoformat()),
+                    (filename, dest_path, None, None, None, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                 )
 
         return jsonify({
@@ -328,14 +327,14 @@ def upload():
     with get_db() as conn:
         conn.execute(
             "INSERT INTO uploads (filename, saved_to, row_count, column_count, "
-            "nulls_json, formats_json, logical_inconsistencies_json, duplicate_records_json, outliers_json, rules_json, summary_json, uploaded_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "nulls_json, formats_json, logical_inconsistencies_json, duplicate_records_json, outliers_json, summary_json, uploaded_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filename, dest_path, int(rows), int(cols),
                 json.dumps(nulls_light),
                 json.dumps(formats), json.dumps(logical_inconsistencies), json.dumps(duplicate_records),
-                json.dumps(outliers), json.dumps(rules),
-                json.dumps(summary), datetime.now(timezone.utc).isoformat(),
+                json.dumps(outliers),
+                json.dumps(summary), datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
 
