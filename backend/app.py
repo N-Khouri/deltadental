@@ -397,5 +397,9 @@ def _on_error(e):
     app.logger.exception("unhandled exception")
     return jsonify({"error": "Internal Server Error"}), 500
 
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
 if __name__ == "__main__":
     app.run(debug=True)
