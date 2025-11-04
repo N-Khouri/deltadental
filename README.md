@@ -27,7 +27,8 @@ request/latency logging for quick, zero-infra monitoring.
 │       ├───404.html
 │       ├───history.html
 │       └───index.html
-└───requirements.txt
+├───requirements.txt
+└───README.md
 ```
 * Flask is configured to load templates from frontend/templates and serves:
   * ```/``` &rarr; ```index.html```
@@ -54,7 +55,7 @@ python -m venv .venv
 3. Run the app
 ```
 cd backend
-python app.py
+.venv/bin/python app.py
 ```
 4. Open the UI
 * Upload page: http:localhost:5000
