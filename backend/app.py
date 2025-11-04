@@ -88,10 +88,10 @@ def history_page():
     for r in rows:
         try:
             nulls = json.loads(r["nulls_json"]) if r["nulls_json"] else []
-            formats = json.loads(r["formats_json"]) if r["formats_json"] else []
-            logics = json.loads(r["logical_inconsistencies_json"]) if r["logical_inconsistencies_json"] else []
-            duplicates = json.loads(r["duplicate_records_json"]) if r["duplicate_records_json"] else []
-            outliers = json.loads(r["outliers_json"]) if r["outliers_json"] else []
+            formats = json.loads(r["formats_json"]) if r["formats_json"] else {}
+            logics = json.loads(r["logical_inconsistencies_json"]) if r["logical_inconsistencies_json"] else {}
+            duplicates = json.loads(r["duplicate_records_json"]) if r["duplicate_records_json"] else {}
+            outliers = json.loads(r["outliers_json"]) if r["outliers_json"] else {}
         except Exception:
             nulls = []
             formats = []
