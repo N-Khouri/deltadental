@@ -48,8 +48,9 @@ cd deltadental
 2. Create a virtual environment & install deps
 ```
 python -m venv .venv
-pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt
 ```
+> Depending on your system, you'll either use python or python3
 3. Run the app
 ```
 cd backend
