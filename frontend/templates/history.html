@@ -47,6 +47,11 @@
             padding: 1rem 1.25rem;
         }
 
+        nav {
+            display: flex;
+            justify-content: center;
+        }
+
         nav a {
             color: var(--muted);
             text-decoration: none;
@@ -227,24 +232,11 @@
             padding-left: 1rem;
         }
 
-        .footer {
-            color: var(--muted);
-            font-size: .85rem;
-            margin-top: .75rem;
-        }
-
         @media (max-width: 900px) {
             .grid {
                 grid-template-columns: 1fr;
             }
 
-            thead {
-                display: none;
-            }
-
-            tr, td {
-                display: block;
-            }
 
             td {
                 border-bottom: none;
@@ -291,18 +283,18 @@
             {% set dups_len = (r.top_duplicates | length) %}
             {% set outliers_len = (r.top_outliers | length) %}
             <tr data-row data-key="{{ r.id }} {{ r.filename }}">
-                <td><code>#{{ r.id }}</code></td>
-                <td><code>{{ r.uploaded_at }}</code></td>
+                <td>{{ r.id }}</td>
+                <td>{{ r.uploaded_at }}</td>
                 <td>{{ r.filename }}</td>
                 <td class="size">{{ r.row_count if r.row_count is not none else '-' }}
                     × {{ r.column_count if r.column_count is not none else '-' }}</td>
                 <td>
                     <div class="chips">
-                        <span class="chip {% if nulls_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ nulls_len }}</strong> missing cols</span>
-                        <span class="chip {% if formats_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ formats_len }}</strong> format checks</span>
-                        <span class="chip {% if logics_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ logics_len }}</strong> logic flags</span>
-                        <span class="chip {% if dups_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ dups_len }}</strong> duplicates</span>
-                        <span class="chip {% if outliers_len > 0 %}bad{% else %}good{% endif %}"><strong>{{ outliers_len }}</strong> outliers</span>
+                        <span class="chip {% if nulls_len >= 5 %}bad{% elif nulls_len < 5 and nulls_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ nulls_len }}</strong> missing cols</span>
+                        <span class="chip {% if formats_len >= 5 %}bad{% elif formats_len < 5 and formats_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ formats_len }}</strong> format checks</span>
+                        <span class="chip {% if logics_len >= 5 %}bad{% elif logics_len < 5 and logics_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ logics_len }}</strong> logic flags</span>
+                        <span class="chip {% if dups_len >= 5 %}bad{% elif dups_len < 5 and dups_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ dups_len }}</strong> duplicates</span>
+                        <span class="chip {% if outliers_len >= 5 %}bad{% elif outliers_len < 5 and outliers_len > 0 %}warn{% else %}good{% endif %}"><strong>{{ outliers_len }}</strong> outliers</span>
                     </div>
                 </td>
                 <td>
@@ -350,7 +342,6 @@
                             {% else %}<span class="muted">(none)</span>{% endif %}
                         </div>
                     </div>
-                    <div class="footer">Saved to disk at: <code>{{ r.saved_to }}</code></div>
                 </td>
             </tr>
         {% endfor %}
@@ -359,7 +350,6 @@
 </main>
 
 <script>
-    // Expand/collapse rows
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-toggle]');
         if (!btn) return;
@@ -370,7 +360,6 @@
             btn.textContent = row.classList.contains('open') ? 'Hide' : 'View';
         }
     });
-    // Simple client-side filter
     const input = document.getElementById('search');
     let rows = Array.from(document.querySelectorAll('[data-row]'));
     input?.addEventListener('input', () => {

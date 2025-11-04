@@ -84,8 +84,6 @@ def history_page():
         top_duplicates = [f"{key}: {value}{'%' if 'pct' in key else ''}" for key, value in (duplicates.items() or {}) if value > 0]
         top_outliers = [f"{key}: {value}{'%' if 'pct' in key else ''}" for key, value in (outliers.items() or {}) if value > 0]
 
-        print(top_outliers)
-
         records.append({
             "id": r["id"],
             "filename": r["filename"],
