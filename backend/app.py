@@ -1,5 +1,5 @@
 import numpy as np
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, g
 from werkzeug.utils import secure_filename
 import os
 import pandas as pd
@@ -8,16 +8,36 @@ from datetime import datetime, timezone
 import json
 import re
 from collections import Counter
+import logging, time
+from logging.handlers import RotatingFileHandler
+
 
 ALLOWED_EXTENSIONS = {"csv"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 DB_PATH = "app.db"
+log_dir = "logs"
 
 app = Flask(__name__, template_folder='../frontend/templates')
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+os.makedirs(log_dir, exist_ok=True)
+
+app_handler = RotatingFileHandler(os.path.join(log_dir, "app.log"), maxBytes=1_000_000, backupCount=5)
+app_handler.setLevel(logging.INFO)
+app_handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)s %(name)s :: %(message)s"
+))
+app.logger.addHandler(app_handler)
+app.logger.setLevel(logging.INFO)
+
+access_logger = logging.getLogger("access")
+access_handler = RotatingFileHandler(os.path.join(log_dir, "access.log"), maxBytes=5_000_000, backupCount=3)
+access_handler.setLevel(logging.INFO)
+access_handler.setFormatter(logging.Formatter("%(message)s"))
+access_logger.addHandler(access_handler)
+access_logger.setLevel(logging.INFO)
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -140,6 +160,7 @@ def upload():
 
         # Calculate any format errors for all columns
         invalid_emails = 0
+        # validate if an email follows the norm. (e.g., @ exists, domain exists...)
         email_re = re.compile(r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
         if "email" in df.columns:
             ser = df["email"]
@@ -352,6 +373,29 @@ def upload():
         "summary": summary
     }), 200
 
+@app.before_request
+def _start_timer():
+    g._t0 = time.perf_counter()
+
+@app.after_request
+def _log_request(resp):
+    try:
+        dt_ms = int((time.perf_counter() - getattr(g, "_t0", time.perf_counter())) * 1000)
+        line = (
+            f'method={request.method} path="{request.path}" '
+            f'status={resp.status_code} bytes={resp.calculate_content_length() or 0} '
+            f'dur_ms={dt_ms} ip={request.headers.get("X-Forwarded-For", request.remote_addr)} '
+            f'ua="{request.user_agent.string}"'
+        )
+        logging.getLogger("access").info(line)
+    except Exception as e:
+        app.logger.exception("failed to write access log: %s", e)
+    return resp
+
+@app.errorhandler(Exception)
+def _on_error(e):
+    app.logger.exception("unhandled exception")
+    return jsonify({"error": "Internal Server Error"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
