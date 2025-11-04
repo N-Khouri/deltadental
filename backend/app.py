@@ -12,7 +12,7 @@ import logging, time
 from logging.handlers import RotatingFileHandler
 
 
-ALLOWED_EXTENSIONS = {"csv"}
+ALLOWED_EXTENSIONS = {"csv"}    # guardrails on upload types
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 DB_PATH = "app.db"
 log_dir = "logs"
@@ -40,6 +40,7 @@ access_logger.addHandler(access_handler)
 access_logger.setLevel(logging.INFO)
 
 def get_db():
+    """Create a SQLite connection with row dict access."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -78,6 +79,9 @@ def index():
 
 @app.get("/history")
 def history_page():
+    """Render a summary of the most recent uploads.
+    We parse JSON blobs into terse ‘top_*’ strings to avoid heavy server work.
+    """
     with get_db() as conn:
         rows = conn.execute(
             "SELECT id, filename, saved_to, row_count, column_count, "
@@ -122,6 +126,12 @@ def history_page():
 
 @app.post("/upload")
 def upload():
+    """Handle CSV upload, compute metrics, persist a summary row, return JSON.
+    Design choices:
+    - All metrics are computed in a single pass here (simplicity > micro-APIs).
+    - Percentages are of total rows; we guard against division by zero.
+    - Only persist “light” versions of metrics to keep DB small and history fast.
+    """
     if "file" not in request.files:
         return jsonify({"error": "No file part in request."}), 400
 
@@ -141,12 +151,14 @@ def upload():
     dups, outliers, rules, summary = {}, {}, {}, {}
 
     try:
-        # Read the files
+        # === Read & shape ===
+        # Pandas will infer dtypes; low_memory=False prevents mixed-type guesswork.
         df = pd.read_csv(dest_path, low_memory=False)
         rows, cols = df.shape
         columns = df.columns.tolist()
 
-        # Calculate missing entries for all columns
+        # === Missingness ===
+        # Null counts + percentage per column, then convert to a list of dicts for JSON.
         null_counts = df.isna().sum()
         null_pct = (df.isna().mean() * 100).round(2)
         nulls = (
@@ -158,7 +170,8 @@ def upload():
         )
         nulls_light = nulls
 
-        # Calculate any format errors for all columns
+        # === Format checks ===
+        # Email syntax: pragmatic RFC-like regex; does not guarantee deliverability.
         invalid_emails = 0
         # validate if an email follows the norm. (e.g., @ exists, domain exists...)
         email_re = re.compile(r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
@@ -169,6 +182,8 @@ def upload():
             invalid_emails += int(mask.sum())
         invalid_emails_pct = round((invalid_emails / rows) * 100, 3)
 
+        # Dates in the future: we pick the first *date-like* column by name.
+        # NOTE: We compare ISO8601 strings; this assumes consistent ISO formatting.
         today = datetime.now(timezone.utc).isoformat()
         header = [c for c in df.columns if "date" in c.lower()]
         dates = [pd.to_datetime(c, format='mixed').isoformat() for c in df[header[0]]]
@@ -178,6 +193,7 @@ def upload():
                 total_future_dates += 1
         total_future_dates_pct = round((total_future_dates / rows) * 100 if rows else 0.0, 3)
 
+        # Ages out of bounds (<18 or >100): a naive plausibility check.
         total_unrealistic_ages = 0
         if "age" in df.columns:
             for age in df["age"]:
@@ -185,6 +201,7 @@ def upload():
                     total_unrealistic_ages += 1
         total_unrealistic_pct = round((total_unrealistic_ages / rows) * 100 if rows else 0.0, 3)
 
+        # Status check: counts UNKNOWN statuses if present.
         total_invalid_statuses = 0
         if "status" in df.columns:
             status_col = df["status"].dropna().astype(str)
@@ -202,7 +219,8 @@ def upload():
             "invalid_statuses_pct": total_invalid_statuses_pct,
         }
 
-        # Calculate any logical inconsistencies found for all columns
+        # === Logical inconsistencies ===
+        # Examples: selling price < cost; stock below reorder level.
         sell_less_cost = 0
         sell_less_cost_pct = 0
         if "cost_price" in df.columns and "selling_price" in df.columns:
@@ -237,21 +255,22 @@ def upload():
             "stock_less_reorder_pct": stock_less_reorder_pct,
         }
 
-        # Calculate how many duplicate records where found. Determined by repeated emails.
+        # === Duplicates ===
+        # Heuristic: duplicates by email if `email` exists.
         total_duplicates_records = 0
         total_duplicates_records_pct = 0
         if "email" in df.columns:
             dups_by_email = int(df["email"].dropna().duplicated().sum())
             total_duplicates_records += dups_by_email
             total_duplicates_records_pct += round((dups_by_email / rows) * 100 if rows else 0.0, 3)
-        print(total_duplicates_records_pct)
 
         duplicate_records = {
             "total_duplicates_records": total_duplicates_records,
             "total_duplicates_records_pct": total_duplicates_records_pct,
         }
 
-        # Calculate any outliers found. E.g., invalid payment methods, negative total amounts/errors, ...
+        # === Outliers / value anomalies ===
+        # Business-rule + numeric sanity checks.
         total_invalid_methods = 0
         total_invalid_methods_pct = 0
         if "payment_method" in df.columns:
@@ -277,6 +296,8 @@ def upload():
         total_pricing_error = 0
         total_pricing_error_pct = 0
         if "product_id" in df.columns and "unit_price" in df.columns and "product_name" in df.columns:
+            # Canonical unit price per (product_id, product_name) using a mode-like rule
+            # (lower mode chosen on ties). Flags rows whose unit_price deviates.
             unit_price = pd.to_numeric(df["unit_price"], errors="coerce").round(2)
             tmp = df.assign(__price_cents=unit_price)
 
@@ -309,6 +330,7 @@ def upload():
             "total_pricing_error_pct": total_pricing_error_pct,
         }
 
+        ### TODO
         summary = {
             "missing_cols": int((null_counts > 0).sum()),
             "formats_total": int(formats.get("email_invalid", 0))
@@ -321,6 +343,8 @@ def upload():
         }
 
     except Exception as e:
+        # Best-effort persistence even on parse failure so the UI can show “failed to read”
+        # alongside the file metadata (filename, path, timestamp).
         with get_db() as conn:
             try:
                 conn.execute(
@@ -375,10 +399,12 @@ def upload():
 
 @app.before_request
 def _start_timer():
+    """Stamp request start time for latency logging."""
     g._t0 = time.perf_counter()
 
 @app.after_request
 def _log_request(resp):
+    """Emit a concise access log line with method, path, status, size, duration, IP, and UA."""
     try:
         dt_ms = int((time.perf_counter() - getattr(g, "_t0", time.perf_counter())) * 1000)
         line = (
@@ -394,6 +420,7 @@ def _log_request(resp):
 
 @app.errorhandler(Exception)
 def _on_error(e):
+    """Catch-all 500 with server-side logging; avoids leaking internals to clients."""
     app.logger.exception("unhandled exception")
     return jsonify({"error": "Internal Server Error"}), 500
 
